@@ -96,17 +96,21 @@ struct threadInfo{
 	int priority;
 };
 static __thread struct threadInfo thread;//every thread has an independent struct copy
-struct threadInfo** thrInfos;//pthread datas
+static struct threadInfo** thrInfos;//pthread datas
 static struct thr_queue trd_qs[11];//11 queues
 static int quantum = 3;
 static int tableAlloc[11] = {17,16,15,11,10,9,7,6,4,3,2}; //default CPU assignment to 11 queues
 static int currentTime=0;
+pthread_barrier_t barrier;//barrier
 void* handler(void* info){
 	thread = *(struct threadInfo*) info;
 	thrInfos[thread.threadN] = &thread;
-	printf("Thread: %d, ID: %ld, Arrival Time: %d, Burst Time: %d, Priority:%d\n",thread.threadN,pthread_self(),thread.arrivalTime,thread.burstTime,thread.priority);
 	
-	pthread_exit(NULL);
+	printf("thread infos %d \n",thrInfos[thread.threadN]->burstTime);
+	printf("Thread: %d, ID: %ld, Arrival Time: %d, Burst Time: %d, Priority:%d\n",thread.threadN,pthread_self(),thread.arrivalTime,thread.burstTime,thread.priority);
+	pthread_barrier_wait(&barrier);
+	while(1);
+	//pthread_exit(NULL);
 }
 void errExit(const char* ch){//error handler
 	perror(ch);
@@ -136,6 +140,7 @@ int main(int argc, char* argv[]){
 	printf("/* Rappel: Arrival Time  = Date de soumission; Burst Time = Temps d'exécution. */\n");
 	printf("/* Attention: Basic time unit is second. */\n");
 	int threadNum,arrivalTime,burstTime,rtn;//rtn is the return value
+	
 /*Initialization of threads*/
 	struct threadInfo thread;
 	printf("Please enter the number of threads you want to create:");
@@ -145,7 +150,8 @@ int main(int argc, char* argv[]){
 	printf("Please enter the latest arrival time for all threads:");
 	scanf("%d",&arrivalTime);
 
-	srand((unsigned)time(NULL));
+	srand((unsigned)time(NULL));//gene rand seed
+	pthread_barrier_init(&barrier,NULL,threadNum+1);// barrier init
 	pthread_t pthreadID[threadNum];//pthread id
 	thrInfos = (struct threadInfo**)malloc(sizeof(struct threadInfo*)*threadNum);//malloc pthread data
 	int totalTime=0;
@@ -160,11 +166,17 @@ int main(int argc, char* argv[]){
 			errExit("error on thread creation\n");
 			
 	}
+	//sleep(1);// to make sure pthread create has returned
+	pthread_barrier_wait(&barrier);
+	pthread_barrier_destroy(&barrier);
 	for(int i=0;i<threadNum;i++)
 	{
+		if(thrInfos[i])
 		totalTime+=thrInfos[i]->burstTime;
+	else
+		printf("i  = %d\n",i);
 	}
-	printf("totalTime is %d",totalTime);
+	printf("totalTime is %d\n",totalTime);
 	printf("%d threads randomly created!\n",threadNum);
 	for(int i=0;i<threadNum;i++){
 		rtn = pthread_join(pthreadID[i],NULL);
