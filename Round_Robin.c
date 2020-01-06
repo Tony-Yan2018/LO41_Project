@@ -44,12 +44,13 @@ static int quantum = 3; // time slice
 static int tableAlloc[11] = {17,16,15,11,10,9,7,6,4,3,2}; //default CPU assignment to 11 queues
 static int timer = 0; // to simulate clock
 static int trd_elu,trd_now = 0,trd_temp; // trd_elu = thread elu a chaque second; trd_now = thread in execution every second
-static int threadNum,arrivalTime,burstTime,rtn,totalTime=0;;//rtn is the return value
+static int threadNum,arrivalTime,burstTime,rtn,totalTime=0,restTControl=-1;;//rtn is the return value
 static int* tableAllocSec;
 static int restT_Q[11];
 pthread_barrier_t barrier; //barrier
 sem_t sem_queue[11]; // semaphore for 11 queues
 pthread_mutex_t threadTime;
+pthread_mutex_t restT;
 
 void* handler(void* info){
     thread = *(struct threadInfo*) info;
@@ -62,8 +63,12 @@ void* handler(void* info){
         if(thread.threadN == trd_now)
             pthread_mutex_lock(&threadTime);
         //thread = *thrInfos[thread.threadN];
+        if(thread.threadN == restTControl)
+            pthread_mutex_lock(&restT);
         if(thread.burstTime==0)
             break;
+        if(thread.threadN == restTControl)
+            pthread_mutex_unlock(&restT);
         if(thread.threadN == trd_now)
             pthread_mutex_unlock(&threadTime);
     }
@@ -95,13 +100,13 @@ void showAllocInfo(){
 }
 
 int restTime();
-void showTable();
+
 
 int main(int argc, char* argv[]){
     printf("/* Rappel: Arrival Time  = Date de soumission; Burst Time = Temps d'exécution. */\n");
     printf("/* Attention: Basic time unit is second. */\n");
 /*Initialization of threads*/
-    struct threadInfo thread;
+    struct threadInfo threadInit;
     do{
     printf("Please enter the number of threads you want to create (at least 11):");
     scanf("%d",&threadNum);
@@ -118,32 +123,33 @@ int main(int argc, char* argv[]){
     srand((unsigned)time(NULL));//gene rand seed
     pthread_barrier_init(&barrier,NULL,threadNum+1);// barrier init
     pthread_mutex_init(&threadTime,NULL); // thread time mutex init
+    pthread_mutex_init(&restT,NULL);
     pthread_t pthreadID[threadNum];//pthread id
-    thrInfos = (struct threadInfo**)malloc(sizeof(struct threadInfo*)*threadNum);//malloc pthread data interface
-
+    thrInfos = (struct threadInfo**)malloc(sizeof(struct threadInfo*)*threadNum);
+    //malloc pthread data interface array
     for(int i=0;i<threadNum;i++){
         if(i<11){
-            thread.arrivalTime =0;
-            thread.priority = i;
+            threadInit.arrivalTime =0;
+            threadInit.priority = i;
         }
         else{
-            thread.arrivalTime = rand()%arrivalTime;//[0,arrivalTime)
-            thread.priority = rand()%10;//[0,10)
+            threadInit.arrivalTime = rand()%arrivalTime;//[0,arrivalTime)
+            threadInit.priority = rand()%10;//[0,10)
         }
-        thread.threadN = i;
-        thread.burstTime = rand()%burstTime+1; //(0,burstTime]
-        rtn = pthread_create(pthreadID+i,NULL,handler,&thread);
+        threadInit.threadN = i;
+        threadInit.burstTime = rand()%burstTime+1; //(0,burstTime]
+        rtn = pthread_create(pthreadID+i,NULL,handler,&threadInit);
+        /*!!!!!! important !!!!! do never delete this line !!!!!*/
+        usleep(10000);
+        /*!!!!!! important !!!!! do never delete this line !!!!!*/
         if(rtn)
             errExit("error on thread creation\n");
 
     }
     pthread_barrier_wait(&barrier);// barrier to ensure pthread creation
-    pthread_barrier_destroy(&barrier);
-
-
     printf("Total time of execution is %d\n",restTime());
     printf("%d threads randomly created!\n",threadNum);
-
+    pthread_barrier_destroy(&barrier);
     showAllocInfo();
 /*end of initialization*/
 /*quantum change before execution*/
@@ -255,7 +261,6 @@ int main(int argc, char* argv[]){
     }
 /*end const tab alloc*/
 /*end of queue time allocation*/
-    showTable();
     int currentQ,countQ=0,quant=quantum;
 /*initialization at second 0*/
 //    for(int i=0;i<threadNum;i++){
@@ -380,6 +385,8 @@ int main(int argc, char* argv[]){
         if(rtn)
             errExit("error on joining thread\n");
     }
+    pthread_mutex_destroy(&threadTime);
+    pthread_mutex_destroy(&restT);
     free(tableAllocSec);
     free(thrInfos);
     printf("Simulation finished.\n");
@@ -387,15 +394,16 @@ int main(int argc, char* argv[]){
 }
 int restTime(){
     int temp=0;
-    pthread_mutex_lock(&threadTime);
-    for(int i=0;i<threadNum;i++)
+    pthread_mutex_lock(&restT);
+    for( restTControl=0;restTControl<threadNum;restTControl++)
     {
-        if(thrInfos[i])
-            temp+=thrInfos[i]->burstTime;
+        if(thrInfos[restTControl])
+            temp+=thrInfos[restTControl]->burstTime;
         else
-            printf("error! i  = %d, totalTime = %d, threadNum = %d\n",i,temp,threadNum);
+            printf("error! i  = %d, totalTime = %d, address = %d\n",restTControl,temp,thrInfos[restTControl]);
     }
-    pthread_mutex_unlock(&threadTime);
+    pthread_mutex_unlock(&restT);
+    restTControl=-1;
     return temp;
 }
 int q_size(const thr_q_ptr* self)
@@ -496,27 +504,7 @@ void showQueue(thr_q_ptr* q,int n){
     }
     pthread_mutex_unlock(&self->q_mut);
 }
-void showTable(){
-    printf("Table  ");
-    for(int i=0;i<restTime();i++){
-        printf("\t%d\t",i);
-    }
-    printf("\n");
-    int temp,lastone=0;
-    for(int i=0;i<11;i++){
-        printf("%d:    ",i);
-        temp=lastone;
-        while(temp-->0)
-            printf("     ");
 
-        temp=trd_qs[i]->timeAlloc;
-        lastone+=trd_qs[i]->timeAlloc;
-        printf("|");
-        while(temp-->0)
-            printf("  x  |");
-        printf("\n");
-    }
-}
 int nextExecTime(int q){// success on returning next execution time; return -1 if not found
     int temp=0;
     for(int i=0;i<totalTime;i++){
