@@ -203,17 +203,7 @@ int main(int argc, char* argv[]){
 /*end of CPU change*/
     showAllocInfo();
     totalTime = restTime();
-//    int help1;//number of quantum
-//    float help2= (float)totalTime/(float)quantum,help3;
-//    help1=(int)help2;
-//    help3=help2-help1;
-//    printf("%d %f\n",help1,help3);
-//    if(help3!=0.0)
-//        help1++;
     tableAllocSec = (int*)malloc(sizeof(int)*totalTime);
-
-
-
 /*allouer temps a chaque queue selon le pourcentage indique*/
     int seconds;
     sum=0;
@@ -262,12 +252,12 @@ int main(int argc, char* argv[]){
 /*end const tab alloc*/
 /*end of queue time allocation*/
     int currentQ,countQ=0,quant=quantum;
-/*initialization at second 0*/
+
 //    for(int i=0;i<threadNum;i++){
 //        if(thrInfos[i]->arrivalTime == 0)
 //            q_push(&trd_qs[thrInfos[i]->priority],i);// add threads to queue at sec 0
 //    }
-/*end init sec 0*/
+
     printf("Start simulation...\n");
     printf("Recall: Total Time is %d; quantum is %d\n",restTime(),quantum);
 /*start ordonnancement*/
@@ -277,12 +267,14 @@ int main(int argc, char* argv[]){
     if(rtn)
         errExit("error on preemption queue creation\n");
     bool flag=false;
+    /*initialization at second 0*/
     for(int i=0;i<threadNum;i++){
         if(thrInfos[i]->arrivalTime == 0){ // if arrived at sec 0
             // priority equals && not time 0
             q_push(&trd_qs[thrInfos[i]->priority],i);// directly into corresponding queue
         }
     }
+    /*end init sec 0*/
     while(restTime()>0){ // si temps total reste a executer n'est pas 0
        // trd_now = q_top(&trd_qs[tableAllocSec[timer]]);
 
@@ -302,19 +294,7 @@ int main(int argc, char* argv[]){
 
         if(flag){// switch to the new thread
         /*choose queue*/
-//        if(thrInfos[trd_now]->priority != tableAllocSec[timer]){//若这一秒将要执行的队列与分配表不同
-//            int swap = tableAllocSec[timer];//swap是本来在这一秒要执行的队列
-//            tableAllocSec[timer]  = thrInfos[trd_now]->priority;//borrow second
-//            tableAllocSec[nextExecTime(thrInfos[trd_now]->priority)] = swap;//give back second
-//        }
-//        int current = tableAllocSec[timer];
-//        while(empty(&trd_qs[current])){
-//            if(current ==11){
-//                printf("infinite loop to search queue\n");
-//                return 0;
-//            }
-//            current++;
-//        }
+
             int current =nextAvailQ();
             if( current!= tableAllocSec[timer]){
             int swap = tableAllocSec[timer];//swap是本来在这一秒要执行的队列
@@ -330,12 +310,6 @@ int main(int argc, char* argv[]){
                 tableAllocSec[nextExecTime(thrInfos[trd_now]->priority)] = swap;//give back second
             }
         }
-        // tableAllocSec[timer];//current queue number selon table allocation
-        /*end of choose queue*/
-        /*choose thread*/
-
-        if(timer==0 || flag)
-            trd_now=trd_elu;
 
         /* simulation */
         pthread_mutex_lock(&threadTime);
@@ -354,9 +328,11 @@ int main(int argc, char* argv[]){
        // trd_elu=q_top(&trd_qs[tableAllocSec[timer]]);
         /*start of requisition*/
         if(!(thrInfos[trd_now]->burstTime > 0 && quant>0)){ // preemption
-
             thrInfos[trd_now]->priority--;// decrease current thread's priority
             //trd_now=trd_elu;//update current thread
+            if(quant == 0 && thrInfos[trd_now]->burstTime > 0){
+
+            }
             quant = quantum; //restore quantum
             while(!empty(&requisition)){
                 q_pop(&requisition,&rtn);//get requisition thread
@@ -367,8 +343,6 @@ int main(int argc, char* argv[]){
         }
         /*fin de requisition*/
         pthread_mutex_unlock(&threadTime);
-
-
         /*^^^last second^^^*/
         timer++;// to next second
         /*vvv- next second -vvv*/
